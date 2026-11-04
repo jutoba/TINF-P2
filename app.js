@@ -13,57 +13,6 @@
   let uidN = 0; const uid = p => (p || 'w') + (++uidN);
   const S = String.raw;
 
-  /* ---------- Usuario: los contadores de ejercicios se guardan en el servidor ---------- */
-  let user = null;
-  let userStats = {};
-  async function api(url, body) {
-    const res = await fetch(url, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) { const e = new Error(data.error || 'Error del servidor.'); e.status = res.status; throw e; }
-    return data;
-  }
-  const NO_SERVER = 'No se puede conectar con el servidor. Ábrelo con iniciar.bat.';
-  async function importOldStats() {
-    const old = store.get('stats', {});
-    if (!Object.keys(old).length) return;
-    try {
-      const d = await api('/api/stats/import', { stats: old });
-      userStats = d.stats;
-      if (d.imported) store.set('stats', {});
-    } catch (e) { /* se queda en el navegador y se reintenta en el siguiente inicio de sesión */ }
-  }
-  function showLogin(notice = '') {
-    document.body.classList.add('logged-out');
-    $('#side').innerHTML = '';
-    $('#crumb').textContent = '';
-    $('#view').innerHTML = `<div class="login"><header><span class="eyebrow">Cuaderno de Canal</span><h1>Entra en tu cuenta</h1><p class="small muted">Tus resultados de los ejercicios se guardan en tu usuario.</p></header>
-      <form class="panel" id="loginForm">
-        <div class="field"><label for="loginUser">Usuario</label><input type="text" id="loginUser" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required></div>
-        <div class="field"><label for="loginPass">Contraseña</label><input type="password" id="loginPass" name="password" autocomplete="current-password" required></div>
-        <p class="login-err" id="loginErr" role="alert">${esc(notice)}</p>
-        <div class="row"><button class="btn pri" type="submit">Entrar</button><button class="btn" type="button" id="registerBtn">Crear cuenta</button></div>
-      </form></div>`;
-    const form = $('#loginForm');
-    const send = async url => {
-      const err = $('#loginErr');
-      err.textContent = '';
-      $$('button', form).forEach(b => { b.disabled = true; });
-      try {
-        const d = await api(url, { username: $('#loginUser').value, password: $('#loginPass').value });
-        user = d.user;
-        userStats = d.stats;
-        await importOldStats();
-        route();
-      } catch (e) {
-        err.textContent = e.status ? e.message : NO_SERVER;
-        $$('button', form).forEach(b => { b.disabled = false; });
-      }
-    };
-    form.onsubmit = ev => { ev.preventDefault(); send('/api/login'); };
-    $('#registerBtn').onclick = () => { if (form.reportValidity()) send('/api/register'); };
-    $('#loginUser').focus();
-  }
-
   /* ---------- Piezas comunes ---------- */
   const digits = bits => bits.map(b => (b ? '<span class="d1">1</span>' : '0')).join('');
   // Palabra con los r primeros bits (redundancia) sobre fondo tintado
@@ -479,7 +428,7 @@
       <nav class="nav-group"><span>Practica</span>${a('#practica', 'Ejercicios con corrección', undefined, route[0] === 'practica')}${a('#teoria', 'Test de teoría', undefined, r === 'teoria')}</nav>
       <nav class="nav-group"><span>Exámenes: solo 2.º parcial</span>${C.exams.map(e => a('#examenes-' + e.id, e.title, undefined, r === 'examenes-' + e.id)).join('')}</nav>
       <nav class="nav-group"><span>Calculadoras</span>${CALCS.map(([id, t]) => a('#calc-' + id, t, undefined, r === 'calc-' + id)).join('')}</nav>
-      <div class="theme-btn row"><button class="btn sm" type="button" id="themeBtn">Tema: <span id="themeLbl"></span></button><button class="btn sm" type="button" id="logoutBtn" title="Cerrar sesión">Salir (${esc(user || '')})</button></div>`;
+      <div class="theme-btn row"><button class="btn sm" type="button" id="themeBtn">Tema: <span id="themeLbl"></span></button></div>`;
   }
 
   /* ---------- Páginas ---------- */
@@ -777,7 +726,7 @@
 
   const GEN_GROUPS = [['Tema 4 · Capacidad de canal', ['bsc', 'cascada', 'simetrico', 'borrado']], ['Tema 5 · Códigos lineales', ['lineal', 'sindrome', 'probcod', 'perfecto']], ['Tema 6 · Códigos cíclicos', ['parametros', 'sistem', 'errores', 'rafagas', 'diseno']], ['Tema 7 · FEC y ARQ', ['modos', 'arqnum', 'ventanas']]];
   PAGES.practica = (kind) => {
-    const stats = userStats;
+    const stats = store.get('stats', {});
     if (!kind || !GEN[kind]) {
       return `<div class="page"><header class="sec"><span class="eyebrow">Practica</span><h1>Ejercicios con corrección</h1><p class="lead">Cada ejercicio se genera con números nuevos. Escribe tus resultados (vale coma decimal, fracciones y 3e-8), pulsa Comprobar y mira la solución paso a paso.</p></header>
         ${GEN_GROUPS.map(([g, ks]) => `<section class="sec"><h3>${g}</h3><div class="grid2">${ks.map(k => { const s = stats[k] || { ok: 0, tot: 0 }; return `<a class="tile" href="#practica-${k}"><span class="t-eyebrow">${s.tot ? `${s.ok}/${s.tot} bien` : 'sin hacer'}</span><b>${GEN[k].title}</b><span class="small muted">Lección: ${(C.lessons.find(l => l.id === GEN[k].lesson) || {}).title || ''}</span></a>`; }).join('')}</div></section>`).join('')}</div>`;
@@ -823,12 +772,12 @@
         typeset($('#pFeedback', area));
         if (!counted) {
           counted = true;
-          api('/api/stats/record', { kind, allOk: ok === ex.qs.length }).then(d => { userStats = d.stats; }).catch(e => {
-            counted = false;
-            const why = e.status === 401 ? 'Tu sesión ha caducado: recarga la página para volver a entrar.' : (e.status ? e.message : NO_SERVER);
-            const box = $('#pFeedback', area);
-            if (box) box.insertAdjacentHTML('beforeend', `<p class="pill no">Este resultado no se ha guardado. ${esc(why)}</p>`);
-          });
+          const all = store.get('stats', {});
+          const k = all[kind] || { ok: 0, tot: 0 };
+          k.tot++;
+          if (ok === ex.qs.length) k.ok++;
+          all[kind] = k;
+          store.set('stats', all);
         }
       };
       $('#pSol', area).onclick = () => {
@@ -844,8 +793,6 @@
 
   /* ---------- Router (solo #nombre: letras, dígitos y guiones) ---------- */
   function route() {
-    if (!user) { showLogin(); return; }
-    document.body.classList.remove('logged-out');
     const h = (location.hash || '#inicio').replace(/^#\/?/, '').replace('/', '-');
     const dash = h.indexOf('-');
     const head = dash < 0 ? h : h.slice(0, dash), tail = dash < 0 ? undefined : h.slice(dash + 1);
@@ -879,10 +826,6 @@
   }
   function wireSide() {
     const b = $('#themeBtn'); if (b) b.onclick = () => { const order = ['system', 'light', 'dark']; const t = store.get('theme', 'system'); store.set('theme', order[(order.indexOf(t) + 1) % 3]); applyTheme(); };
-    const out = $('#logoutBtn');
-    if (out) out.onclick = async () => {
-      try { await api('/api/logout', {}); user = null; userStats = {}; route(); } catch (e) { window.alert('No se ha podido cerrar la sesión. ' + (e.status ? e.message : NO_SERVER)); }
-    };
     applyTheme();
   }
   function closeSide() { $('#side').classList.remove('open'); const s = $('.scrim'); if (s) s.remove(); }
@@ -898,5 +841,5 @@
   tick(); setInterval(tick, 30000);
   window.addEventListener('hashchange', route);
   applyTheme();
-  api('/api/me').then(d => { user = d.user; userStats = d.stats; route(); }).catch(e => showLogin(e.status ? e.message : NO_SERVER));
+  route();
 })();
