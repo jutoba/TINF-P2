@@ -10,6 +10,7 @@
     get(k, d) { try { const v = localStorage.getItem('tinf2:' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem('tinf2:' + k, JSON.stringify(v)); } catch (e) { /* sin almacenamiento */ } }
   };
+  const EXAM_DATE = '2027-01-26'; // segundo parcial: martes 26 de enero de 2027
   let uidN = 0; const uid = p => (p || 'w') + (++uidN);
   const S = String.raw;
 
@@ -436,7 +437,7 @@
   const crumbs = { inicio: 'Inicio', aprende: 'Aprende', calc: 'Calculadoras', practica: 'Practica', examenes: 'Exámenes', teoria: 'Test de teoría', chuleta: 'Chuleta' };
 
   PAGES.inicio = () => {
-    const done = store.get('plan', {}); const date = store.get('examDate', '');
+    const done = store.get('plan', {}); const date = store.get('examDate', EXAM_DATE);
     return `<div class="page">
       <section class="hero">
         <div class="bitline" aria-hidden="true">v = u·G · r = v + e · s = r·Hᵗ = e·Hᵗ · v̂ = r + ê</div>
@@ -450,7 +451,8 @@
       </section>
       <section class="sec">
         <h2>Fecha de tu examen</h2>
-        <div class="row"><label class="small" for="examDateIn">La guardo solo en este navegador para la cuenta atrás de arriba:</label><input id="examDateIn" class="date-in" type="date" value="${esc(date)}"></div>
+        <p>Segundo parcial: <b>martes 26 de enero de 2027</b>.</p>
+        <div class="row"><label class="small" for="examDateIn">Si cambia, ajústala aquí (se guarda solo en este navegador para la cuenta atrás de arriba):</label><input id="examDateIn" class="date-in" type="date" value="${esc(date)}"></div>
       </section>
       <section class="sec">
         <h2>Qué ha caído en el segundo parcial</h2>
@@ -831,7 +833,7 @@
   function closeSide() { $('#side').classList.remove('open'); const s = $('.scrim'); if (s) s.remove(); }
   $('#menuBtn').onclick = () => { const side = $('#side'); side.classList.add('open'); const s = document.createElement('div'); s.className = 'scrim'; s.onclick = closeSide; document.body.appendChild(s); };
   function tick() {
-    const el = $('#countdown'); const d0 = store.get('examDate', '');
+    const el = $('#countdown'); const d0 = store.get('examDate', EXAM_DATE);
     if (!d0) { el.innerHTML = '<a href="#inicio">Pon la fecha del examen</a>'; return; }
     const ms = new Date(d0 + 'T09:00:00') - new Date();
     if (ms <= 0) { el.innerHTML = '<b>Examen pasado</b>'; return; }
