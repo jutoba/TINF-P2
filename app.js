@@ -427,6 +427,7 @@
       <nav class="nav-group"><span>Empieza aquí</span>${a('#inicio', 'Plan y qué cae', undefined, r === 'inicio')}${a('#chuleta', 'Chuleta de fórmulas', undefined, r === 'chuleta')}</nav>
       ${[4, 5, 6, 7].map(tm => `<nav class="nav-group"><span>${temaNames[tm]}</span>${C.lessons.filter(l => l.tema === tm).map(l => a('#aprende-' + l.id, l.title, l.n, r === 'aprende-' + l.id, visited[l.id])).join('')}</nav>`).join('')}
       <nav class="nav-group"><span>Practica</span>${a('#practica', 'Ejercicios con corrección', undefined, route[0] === 'practica')}${a('#teoria', 'Test de teoría', undefined, r === 'teoria')}</nav>
+      ${ENT.length ? `<nav class="nav-group"><span>Entregables</span>${ENT.map(e => a('#entrega-' + e.id, e.short, undefined, r === 'entrega-' + e.id)).join('')}</nav>` : ''}
       <nav class="nav-group"><span>Exámenes: solo 2.º parcial</span>${C.exams.map(e => a('#examenes-' + e.id, e.title, undefined, r === 'examenes-' + e.id)).join('')}</nav>
       <nav class="nav-group"><span>Calculadoras</span>${CALCS.map(([id, t]) => a('#calc-' + id, t, undefined, r === 'calc-' + id)).join('')}</nav>
       <div class="theme-btn row"><button class="btn sm" type="button" id="themeBtn">Tema: <span id="themeLbl"></span></button></div>`;
@@ -434,7 +435,7 @@
 
   /* ---------- Páginas ---------- */
   const PAGES = {};
-  const crumbs = { inicio: 'Inicio', aprende: 'Aprende', calc: 'Calculadoras', practica: 'Practica', examenes: 'Exámenes', teoria: 'Test de teoría', chuleta: 'Chuleta' };
+  const crumbs = { inicio: 'Inicio', aprende: 'Aprende', calc: 'Calculadoras', practica: 'Practica', examenes: 'Exámenes', teoria: 'Test de teoría', chuleta: 'Chuleta', entrega: 'Entregables' };
 
   PAGES.inicio = () => {
     const done = store.get('plan', {}); const date = store.get('examDate', EXAM_DATE);
@@ -740,16 +741,19 @@
   const parseNumAll = s => { const t = String(s).trim(); const out = [parseNumIn(t)]; if (/^[1-9]\d{0,2}(\.\d{3})+(,\d+)?$/.test(t)) out.push(parseNumIn(t.replace(/\./g, ''))); return out; };
   function checkQ(q, raw) {
     if (q.kind === 'choice') return raw === q.ans;
-    if (q.kind === 'bits') return String(raw).replace(/[^01]/g, '') === q.ans;
+    if (q.kind === 'bits' || q.kind === 'matrix') return String(raw).replace(/[^01]/g, '') === q.ans;
     if (q.kind === 'poly') { try { return TC.parsePoly(raw) === q.ans; } catch (e) { return false; } }
+    if (q.kind === 'list') { const v = String(raw).split(/[;,\s]+/).filter(Boolean).map(Number); return v.length === q.ans.length && v.every((x, i) => x === q.ans[i]); }
+    const targets = [q.ans, ...(q.alt || [])];
     return parseNumAll(raw).some(v => {
       if (!isFinite(v)) return false;
-      if (q.rel !== undefined) return Math.abs(v - q.ans) <= q.rel * Math.abs(q.ans) + 1e-15;
-      return Math.abs(v - q.ans) <= (q.tol || 0) + 1e-9;
+      return targets.some(a => (q.rel !== undefined ? Math.abs(v - a) <= q.rel * Math.abs(a) + 1e-15 : Math.abs(v - a) <= (q.tol || 0) + 1e-9));
     });
   }
   const ansText = q => {
     if (q.kind === 'choice') return q.opts.find(o => o[0] === q.ans)[1];
+    if (q.kind === 'list') return q.ans.join(', ');
+    if (q.kind === 'matrix') { const L = q.ans.length; const w = q.label.match(/(\d+)\s*×\s*(\d+)/); const c = w ? +w[2] : L; return q.ans.match(new RegExp(`.{1,${c}}`, 'g')).join(' ; '); }
     if (q.kind === 'poly') return T(TC.ptex(q.ans));
     if (typeof q.ans === 'number') return Math.abs(q.ans) < 1e-3 && q.ans !== 0 ? sci(q.ans) : fmt(q.ans, 5);
     return q.ans;
@@ -793,6 +797,52 @@
     fresh();
   }
 
+  /* ---------- Entregables: enunciado resuelto con corrección por apartado ---------- */
+  const ENT = window.ENTREGAS || [];
+  const entHelpers = { cw, mat: matBlock, tbl, kv, dev };
+  const ansFull = q => esc(ansText(q)) + (q.alt ? q.alt.map(a => ` <span class="muted">o ${esc(sci(a))}</span>`).join('') : '');
+  PAGES.entrega = (id) => {
+    const e = ENT.find(x => x.id === id) || ENT[0];
+    if (!e) return '<div class="page"><p>No hay entregables.</p></div>';
+    const saved = store.get('ent:' + e.id, {});
+    const input = (key, q) => q.kind === 'choice'
+      ? `<select id="eq-${key}" data-eq="${key}"><option value="">Elige…</option>${q.opts.map(o => `<option value="${o[0]}" ${saved[key] === o[0] ? 'selected' : ''}>${o[1]}</option>`).join('')}</select>`
+      : `<input type="text" class="mono" id="eq-${key}" data-eq="${key}" value="${esc(saved[key] || '')}" autocomplete="off" spellcheck="false">`;
+    const total = e.problems.reduce((s, p) => s + p.parts.reduce((t, pt) => t + pt.qs.length, 0), 0);
+    return `<div class="page"><header class="sec"><span class="eyebrow">Entregable · ${e.course}</span><h1>${e.title}</h1><p class="lead">${e.intro}</p>
+      <details><summary>Un poco de historia</summary><div class="body prose">${e.history}</div></details>
+      <div class="callout ojo"><b>Convenciones</b><span>${e.convention}</span></div>
+      <p class="small muted">Números: vale coma decimal, fracciones y 3,6e-7. Matrices: filas de bits separadas por ; o por saltos de línea. Tus respuestas se guardan en este navegador.</p>
+      <div class="row"><button class="btn pri" type="button" id="entAll">Corregir todo</button><button class="btn" type="button" id="entSols">Mostrar todas las soluciones</button><button class="btn ghost" type="button" id="entReset">Borrar mis respuestas</button><span class="score" id="entScore">${total} casillas</span></div></header>
+      ${e.problems.map((p, pi) => `<section class="sec"><h2>${p.title}</h2><div class="statement">${p.statement}</div>
+        ${p.parts.map((pt, k) => { const id = `${pi}-${k}`; return `<div class="part" data-part="${id}"><p class="q-text"><b class="tag">${pt.tag})</b>${pt.q}</p>
+          <div class="q-list">${pt.qs.map((q, j) => { const key = `${id}-${j}`; return `<div class="q"><label for="eq-${key}">${q.label}</label>${q.kind === 'matrix' ? `<textarea id="eq-${key}" data-eq="${key}" spellcheck="false" style="min-height:70px">${esc(saved[key] || '')}</textarea>` : input(key, q)}<span class="mark" id="em-${key}"></span></div>`; }).join('')}</div>
+          <div class="row"><button class="btn sm pri" type="button" data-echeck="${id}">Comprobar</button>${pt.hint ? `<button class="btn sm" type="button" data-ehint="${id}">Pista</button>` : ''}<button class="btn sm" type="button" data-esol="${id}">Solución</button><span class="score" data-escore="${id}"></span></div>
+          ${pt.hint ? `<div class="callout idea" data-ehintbox="${id}" hidden><b>Pista</b><span>${pt.hint}</span></div>` : ''}
+          <div class="example" data-esolbox="${id}" hidden><span class="lbl">Solución</span>${kv(pt.qs.map(q => [q.label, ansFull(q)]))}${pt.sol(entHelpers)}</div></div>`; }).join('')}</section>`).join('')}</div>`;
+  };
+  function entregaInit(root, id) {
+    const e = ENT.find(x => x.id === id) || ENT[0]; if (!e) return;
+    const saved = store.get('ent:' + e.id, {});
+    const partOf = id => { const [pi, k] = id.split('-').map(Number); return e.problems[pi].parts[k]; };
+    const checkPart = id => {
+      const pt = partOf(id); let ok = 0;
+      pt.qs.forEach((q, j) => { const key = `${id}-${j}`; const raw = $('#eq-' + key, root).value; const m = $('#em-' + key, root); if (!String(raw).trim()) { m.textContent = ''; m.className = 'mark'; return; } const good = checkQ(q, raw); if (good) ok++; m.textContent = good ? '✓' : '✗'; m.className = 'mark ' + (good ? 'ok' : 'no'); });
+      $(`[data-escore="${id}"]`, root).textContent = `${ok}/${pt.qs.length}`;
+      return [ok, pt.qs.length];
+    };
+    const toggle = (sel, key, show) => { const box = $(`[${sel}="${key}"]`, root); if (!box) return; box.hidden = show === undefined ? !box.hidden : !show; if (!box.hidden) { mountAll(box); typeset(box); } };
+    root.addEventListener('input', ev => { const k = ev.target.dataset && ev.target.dataset.eq; if (!k) return; saved[k] = ev.target.value; store.set('ent:' + e.id, saved); });
+    root.addEventListener('change', ev => { const k = ev.target.dataset && ev.target.dataset.eq; if (!k) return; saved[k] = ev.target.value; store.set('ent:' + e.id, saved); });
+    $$('[data-echeck]', root).forEach(b => b.onclick = () => checkPart(b.dataset.echeck));
+    $$('[data-ehint]', root).forEach(b => b.onclick = () => toggle('data-ehintbox', b.dataset.ehint));
+    $$('[data-esol]', root).forEach(b => b.onclick = () => toggle('data-esolbox', b.dataset.esol));
+    $('#entAll', root).onclick = () => { let ok = 0, tot = 0; $$('[data-part]', root).forEach(el => { const [a, b] = checkPart(el.dataset.part); ok += a; tot += b; }); $('#entScore', root).textContent = `${ok}/${tot} correctas`; };
+    $('#entSols', root).onclick = () => $$('[data-esolbox]', root).forEach(b => toggle('data-esolbox', b.dataset.esolbox, true));
+    $('#entReset', root).onclick = () => { if (!confirm('¿Borrar todas tus respuestas de este entregable?')) return; store.set('ent:' + e.id, {}); route(); };
+    if (Object.keys(saved).length) $$('[data-part]', root).forEach(el => checkPart(el.dataset.part));
+  }
+
   /* ---------- Router (solo #nombre: letras, dígitos y guiones) ---------- */
   function route() {
     const h = (location.hash || '#inicio').replace(/^#\/?/, '').replace('/', '-');
@@ -809,6 +859,7 @@
     if (page === 'teoria') theoryInit(view);
     if (page === 'examenes') examInit(view);
     if (page === 'practica') practiceInit(view, tail);
+    if (page === 'entrega') entregaInit(view, tail);
     if (page === 'inicio') {
       $$('[data-plan]', view).forEach(cb => cb.onchange = () => { const d = store.get('plan', {}); d[cb.dataset.plan] = cb.checked; store.set('plan', d); cb.closest('.todo').classList.toggle('done', cb.checked); });
       $('#examDateIn', view).onchange = ev => { store.set('examDate', ev.target.value); tick(); };
