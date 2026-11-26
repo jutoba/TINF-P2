@@ -59,9 +59,14 @@
           { tag: 'd', q: R`Distribución de palabras código \(A_i\).`,
             qs: [{ label: 'A₀, A₁, …, A₉ separados por comas', kind: 'list', ans: A1 }],
             hint: R`Son \(2^5=32\) palabras: genera todas con \(v=u\,G_s\) y cuenta pesos. Comprueba que suman 32.`,
-            sol: h => R`<p>Enumerando las 32 palabras:</p>
+            sol: h => R`<p><b>Método general.</b> Cada palabra es \(v=u\,G_s\), la suma de las filas de \(G_s\) que marcan los unos de \(u\). Por ejemplo, \(u=01100\): \(g_2+g_3=\) ${h.cw(B('011101000'), 4)} \(+\) ${h.cw(B('101100100'), 4)} \(=\) ${h.cw(B('110001100'), 4)}, de peso 4. Se hace con las \(2^5=32\) palabras y se cuenta cuántas hay de cada peso.</p>
+              <p><b>Atajo para este código.</b> La redundancia de \(g_1\) es 1111 y la de \(g_2,\dots,g_5\) es 1111 con un bit cambiado (0111, 1011, 1101, 1110). Sea \(m\) el número de unos entre \(u_1\dots u_4\). Peso de \(v\) = peso de \(u\) + peso de la redundancia:</p>
+              <ul class="small"><li>\(u_0=0\): con \(m\) par los 1111 se cancelan a pares y la redundancia pesa \(m\); con \(m\) impar sobra un 1111, que se complementa, y pesa \(4-m\).</li>
+              <li>\(u_0=1\): \(g_1\) suma otro 1111 y lo invierte todo: \(m\) par → \(4-m\), \(m\) impar → \(m\).</li></ul>
+              ${h.tbl(['u₀', 'm', 'palabras C(4,m)', 'peso de u', 'peso redundancia', 'peso total'], [[0, 0, 1, 0, 0, '<b>0</b>'], [0, 1, 4, 1, 3, '<b>4</b>'], [0, 2, 6, 2, 2, '<b>4</b>'], [0, 3, 4, 3, 1, '<b>4</b>'], [0, 4, 1, 4, 4, '<b>8</b>'], [1, 0, 1, 1, 4, '<b>5</b>'], [1, 1, 4, 2, 1, '<b>3</b>'], [1, 2, 6, 3, 2, '<b>5</b>'], [1, 3, 4, 4, 3, '<b>7</b>'], [1, 4, 1, 5, 0, '<b>5</b>']])}
+              <p>Agrupando: \(A_4=4+6+4=14\), \(A_5=1+6+1=8\):</p>
               ${h.tbl(['i', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'], [['Aᵢ', ...A1]])}
-              <p>\(1+4+14+8+4+1=32\). El código no es invariante al complemento (no contiene 111111111), por eso la distribución no es simétrica.</p>
+              <p><b>Comprobaciones:</b> \(1+4+14+8+4+1=32=2^k\) ✓; el primer peso no nulo es \(d_{min}=3\) ✓. Las palabras de peso impar son justo las de \(u_0=1\), la única fila de peso impar: por eso en el problema 2 sale \(p_g=u_0\).</p>
               <div data-widget="lineal" data-mode="g" data-text="${W.join('; ')}" data-p="0.0001"></div>` },
           { tag: 'e', q: R`Distribución de pesos de los líderes de cogrupo \(\alpha_i\), hasta la capacidad de corrección.`,
             qs: [{ label: 'α₀', ans: 1, tol: 0 }, { label: 'α₁', ans: 9, tol: 0 }],
